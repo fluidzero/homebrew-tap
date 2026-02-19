@@ -7,6 +7,12 @@ class Fz < Formula
   sha256 "1fa6796613b9cf10a826e357c6254d729499ba9d52f10ff533cce18fc7549347"
   license "Apache-2.0"
 
+  bottle do
+    root_url "https://github.com/fluidzero/homebrew-tap/releases/download/bottles"
+    sha256 cellar: :any_skip_relocation, arm64_sequoia: "18b0f58d8cacf5e205717dc54321bc9b77e449af3f7917b34b6c46f32b5352d4"
+    sha256 cellar: :any_skip_relocation, arm64_sonoma: "a15cb7066b68f9451d630f7633d15b6f724b6c076b0feceeffc18f451c74fd4a"
+  end
+
   depends_on "python@3.13"
 
   resource "anyio" do
