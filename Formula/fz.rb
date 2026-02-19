@@ -3,8 +3,8 @@ class Fz < Formula
 
   desc "CLI for the FluidZero document intelligence platform"
   homepage "https://github.com/fluidzero/fz-cli"
-  url "https://github.com/fluidzero/fz-cli/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "c246bcb711ecd42672efe0842ac397898349d476b017dbc64b10cdb79ef318a2"
+  url "https://github.com/fluidzero/fz-cli/archive/refs/tags/v0.1.1.tar.gz"
+  sha256 "d4139b8535b2ad84fa26688517c571630a9f9ccc41f30011782f824ba3bf584f"
   license "Apache-2.0"
 
   depends_on "python@3.13"
@@ -79,7 +79,7 @@ class Fz < Formula
   end
 
   test do
-    assert_match "fz, version 0.1.0", shell_output("#{bin}/fz --version")
+    assert_match "fz, version 0.1.1", shell_output("#{bin}/fz --version")
     assert_match "FluidZero CLI", shell_output("#{bin}/fz --help")
   end
 end
