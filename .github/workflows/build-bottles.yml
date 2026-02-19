@@ -25,7 +25,7 @@ jobs:
           TAP_DIR="$(brew --repository)/Library/Taps/fluidzero/homebrew-tap"
           mkdir -p "$(dirname "$TAP_DIR")"
           ln -sf "$GITHUB_WORKSPACE" "$TAP_DIR"
-          brew install --build-from-source fluidzero/tap/fz
+          brew install --build-bottle --build-from-source fluidzero/tap/fz
 
       - name: Create bottle
         run: |
