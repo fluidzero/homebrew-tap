@@ -9,8 +9,9 @@ on:
 jobs:
   bottle:
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-15, macos-14, macos-13, ubuntu-latest]
+        os: [macos-15, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -18,24 +19,24 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Install formula from source
+      - name: Tap and install formula from source
         run: |
-          brew install --build-from-source Formula/fz.rb
+          # Link this checkout as the tap so Homebrew recognizes it
+          TAP_DIR="$(brew --repository)/Library/Taps/fluidzero/homebrew-tap"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          ln -sf "$GITHUB_WORKSPACE" "$TAP_DIR"
+          brew install --build-from-source fluidzero/tap/fz
 
       - name: Create bottle
         run: |
-          brew bottle --json --root-url="https://github.com/fluidzero/homebrew-tap/releases/download/bottles" Formula/fz.rb
-          # Rename to standard bottle name (remove double-dash)
-          for f in fz--*.bottle.*; do
-            mv "$f" "$(echo "$f" | sed 's/fz--/fz-/')"
-          done
+          brew bottle --json --root-url="https://github.com/fluidzero/homebrew-tap/releases/download/bottles" fluidzero/tap/fz
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
         with:
           name: bottle-${{ matrix.os }}
           path: |
-            fz-*.bottle.*
+            fz--*.bottle.*
             *.json
 
   upload:
@@ -52,84 +53,69 @@ jobs:
           path: bottles/
           merge-multiple: true
 
+      - name: List downloaded artifacts
+        run: ls -la bottles/
+
       - name: Upload bottles to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create or update the bottles release
+          # Create the bottles release if it doesn't exist
           gh release create bottles --title "Bottles" --notes "Prebuilt bottles for Homebrew" --repo ${{ github.repository }} 2>/dev/null || true
-          # Delete old bottles for this version before uploading
-          for f in bottles/fz-*.bottle.*; do
-            fname=$(basename "$f")
-            gh release delete-asset bottles "$fname" --repo ${{ github.repository }} --yes 2>/dev/null || true
-          done
-          # Upload new bottles
-          gh release upload bottles bottles/fz-*.bottle.* --repo ${{ github.repository }} --clobber
+          # Upload bottles (--clobber overwrites existing)
+          gh release upload bottles bottles/fz--*.bottle.* --repo ${{ github.repository }} --clobber
 
-      - name: Merge bottle JSON into formula
+      - name: Generate bottle block and update formula
         run: |
-          # Collect all JSON files
-          cat bottles/*.json | python3 -c "
-          import json, sys, re
+          python3 << 'PYEOF'
+          import json, glob, re
 
           bottles = {}
-          for line in sys.stdin:
-              data = json.loads(line.strip()) if line.strip() else {}
+          for jf in glob.glob("bottles/*.json"):
+              with open(jf) as f:
+                  data = json.load(f)
               for formula, info in data.items():
-                  bottle = info.get('bottle', {}).get('tags', {})
-                  bottles.update(bottle)
+                  tags = info.get("bottle", {}).get("tags", {})
+                  bottles.update(tags)
 
-          # Build the bottle block
-          root_url = 'https://github.com/fluidzero/homebrew-tap/releases/download/bottles'
-          lines = ['  bottle do']
-          lines.append(f'    root_url \"{root_url}\"')
-          for tag, info in sorted(bottles.items()):
-              sha = info['sha256']
-              lines.append(f'    sha256 cellar: :any_skip_relocation, {tag}: \"{sha}\"')
-          lines.append('  end')
-          print('\n'.join(lines))
-          " > /tmp/bottle_block.txt
+          if not bottles:
+              print("No bottles found!")
+              exit(1)
 
-          echo "Generated bottle block:"
-          cat /tmp/bottle_block.txt
+          root_url = "https://github.com/fluidzero/homebrew-tap/releases/download/bottles"
+          lines = ["  bottle do", f'    root_url "{root_url}"']
+          for tag in sorted(bottles):
+              sha = bottles[tag]["sha256"]
+              lines.append(f'    sha256 cellar: :any_skip_relocation, {tag}: "{sha}"')
+          lines.append("  end")
+          block = "\n".join(lines)
+          print("Generated bottle block:")
+          print(block)
 
-      - name: Update formula with bottle block
-        run: |
-          BOTTLE_BLOCK=$(cat /tmp/bottle_block.txt)
-
-          # Read current formula
-          FORMULA="Formula/fz.rb"
-
-          # Check if bottle block already exists
-          if grep -q 'bottle do' "$FORMULA"; then
-            # Replace existing bottle block
-            python3 -c "
-          import re
-          with open('$FORMULA') as f:
+          with open("Formula/fz.rb") as f:
               content = f.read()
-          block = open('/tmp/bottle_block.txt').read()
-          content = re.sub(r'  bottle do.*?  end\n', block + '\n', content, flags=re.DOTALL)
-          with open('$FORMULA', 'w') as f:
-              f.write(content)
-          "
-          else
-            # Insert after license line
-            python3 -c "
-          with open('$FORMULA') as f:
-              content = f.read()
-          block = open('/tmp/bottle_block.txt').read()
-          content = content.replace('  license \"Apache-2.0\"', '  license \"Apache-2.0\"\n\n' + block)
-          with open('$FORMULA', 'w') as f:
-              f.write(content)
-          "
-          fi
 
-          echo "Updated formula:"
-          cat "$FORMULA"
+          if "bottle do" in content:
+              content = re.sub(r"  bottle do.*?  end", block, content, flags=re.DOTALL)
+          else:
+              content = content.replace(
+                  '  license "Apache-2.0"',
+                  '  license "Apache-2.0"\n\n' + block,
+              )
+
+          with open("Formula/fz.rb", "w") as f:
+              f.write(content)
+          print("\nUpdated formula written.")
+          PYEOF
 
       - name: Commit updated formula
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/fz.rb
-          git diff --cached --quiet && echo "No changes" || git commit -m "Add bottles for fz $(grep 'sha256' Formula/fz.rb | head -1 | grep -o 'v[0-9.]*' || echo '')" && git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update bottles for fz v0.1.1"
+            git push
+          fi
