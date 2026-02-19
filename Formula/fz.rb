@@ -4,7 +4,7 @@ class Fz < Formula
   desc "CLI for the FluidZero document intelligence platform"
   homepage "https://github.com/fluidzero/fz-cli"
   url "https://github.com/fluidzero/fz-cli/archive/refs/tags/v0.1.1.tar.gz"
-  sha256 "d4139b8535b2ad84fa26688517c571630a9f9ccc41f30011782f824ba3bf584f"
+  sha256 "1fa6796613b9cf10a826e357c6254d729499ba9d52f10ff533cce18fc7549347"
   license "Apache-2.0"
 
   depends_on "python@3.13"
